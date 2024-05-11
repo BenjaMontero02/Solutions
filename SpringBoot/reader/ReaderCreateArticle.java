@@ -1,34 +1,37 @@
-package com.bonartech.springbackend.Services.utils.reader;
+package com.bonartech.springbackend.Services.utils.reader.article;
 
 import com.bonartech.springbackend.Domain.Entity.Article;
+import com.bonartech.springbackend.Services.Article.ArticleService;
+import com.bonartech.springbackend.Services.utils.reader.Reader;
 import com.bonartech.springbackend.exceptions.InvalidColumnExcel;
-import com.bonartech.springbackend.exceptions.InvalidValueOfCell;
 import lombok.NoArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 
 
+/**
+ * Class for create articles by .xlsx
+ * @author linkedin.com/in/benjaminmontero/
+ */
 @NoArgsConstructor
-public abstract class ReaderExcel<T> {
+public class ReaderCreateArticle extends Reader<Article> {
 
-    protected Boolean isValid = true;
-    protected List<T> entityToSave = new ArrayList<>();
-    protected HashMap<String,String> columnHeaders = new HashMap<>();
+    /**
+     * gets the entity
+     * @return entity to work
+     */
+    public Article getEntityToCreate() {
+        return new Article();
+    }
 
-    abstract void setHeadersHashMap();
-
-    public abstract T getEntityToCreate();
-
-    public List<T> readExcel(MultipartFile file) {
+    @Override
+    public List<Article> readExcel(MultipartFile file) {
 
         try {
             //creo un archivo leible
@@ -55,14 +58,14 @@ public abstract class ReaderExcel<T> {
 
             //obtengo la hoja
             Sheet sheet = workBook.getSheetAt(0);
-
             Iterator<Row> rowIterator = sheet.rowIterator();
             //recorro las filas siempre y cueando isValid sea true
             //isValid es falso cuando la fila anterior a la que estoy tiene todas sus celdas en blanco
             while(rowIterator.hasNext() && isValid) {
                 Row row = rowIterator.next();
                 Iterator<Cell> cellIteratorsheet = row.cellIterator();
-                T entity = getEntityToCreate();
+                Article entity = getEntityToCreate();
+                isValid = false;
                 while(cellIteratorsheet.hasNext()) {
                     //obtengo la celda
                     Cell cell = cellIteratorsheet.next();
@@ -72,8 +75,10 @@ public abstract class ReaderExcel<T> {
                     String keyName = this.getKeyName(columnLetter);
                     //obtengo el valor para poder setearlo a mi entidad
                     Object valueOfCell = getValueCell(cell);
-                    this.setValueCellOnEntity(valueOfCell, keyName, entity, count, keyName);
+                    this.setValueCellOnEntity(valueOfCell, entity, count, keyName);
+                    isValid = true;
                 }
+                if(isValid == false){break;}
                 this.entityToSave.add(entity);
                 count++;
             }
@@ -85,56 +90,61 @@ public abstract class ReaderExcel<T> {
         return this.entityToSave;
     }
 
-    private String getKeyName(String valorBuscado){
-        String claveEncontrada = null;
+    /**
+     * defines the headers of the columns
+     */
+    protected void setHeadersHashMap(){
+        columnHeaders.put("Titulo", null);
+        columnHeaders.put("Descripcion", null);
+        columnHeaders.put("PrecioUnitario", null);
+        columnHeaders.put("Stock", null);
+        columnHeaders.put("PrecioDeAdquisicion", null);
+        columnHeaders.put("CodDeBarra", null);
+    }
 
-        //obtengo el valor de la clave en base al valor del map
-        for (String clave : columnHeaders.keySet()) {
-            if (columnHeaders.get(clave).equals(valorBuscado)) {
-                claveEncontrada = clave; // Obtener la clave correspondiente al valor
+    /**
+     *
+     * @param value value to set to entity
+     * @param article entity to be modified
+     * @param row position of row
+     * @param keyName column to reference
+     */
+    protected void setValueCellOnEntity(Object value, Article article, int row, String keyName){
+        switch (keyName) {
+            case "Titulo":
+                this.verify(value, row, keyName);
+                article.setTitle((String) value);
                 break;
-            }
-        }
-
-        return claveEncontrada;
-    }
-
-    //devuelvo un object con el valor de la celda
-    private Object getValueCell(Cell cell){
-        CellType cellType = cell.getCellType();
-        switch (cellType) {
-            case NUMERIC:
-                isValid = true;
-                return cell.getNumericCellValue();
-            case STRING:
-                isValid = true;
-                return cell.getStringCellValue();
-            case BLANK:
-                isValid = false;
-                return null;
+            case "Descripcion":
+                if(value == null){
+                    article.setDescription(null);
+                }else{
+                    article.setDescription((String) value);
+                }
+                break;
+            case "PrecioUnitario":
+                this.verify(value, row, keyName);
+                article.setUnitPrice((Double) value);
+                break;
+            case "Stock":
+                this.verify(value, row, keyName);
+                double doubleValue = (Double) value;
+                Long toIntegerValue = (long) doubleValue;
+                article.setStockUnits(toIntegerValue);
+                break;
+            case "PrecioDeAdquisicion":
+                this.verify(value, row, keyName);
+                article.setAcquisitionCost((Double) value);
+                break;
+            case "CodDeBarra":
+                if(value == null){
+                    article.setCodBar(null);
+                }else{
+                    article.setCodBar((String) value);
+                }
+                break;
             default:
-                return null;
-        }
-    }
-
-    //verifico que que el valor que voy a gurdar en mi celda no sea true
-    protected void verify(Object value, int row, String keyName){
-        if(value == null){
-            throw new InvalidValueOfCell(row, keyName);
-        }
-    }
-
-    //seteo el valor de la celda a mi entidad
-    abstract void setValueCellOnEntity(Object value, String type, T article, int row, String keyName);
-
-    //elimino la letra de la columna
-    protected String letterOfColumnClear(String refersToFormula){
-        int indiceDolar = refersToFormula.indexOf('$');
-        if (indiceDolar != -1 && indiceDolar < refersToFormula.length() - 1) {
-            String letraColumna = String.valueOf(refersToFormula.charAt(indiceDolar + 1));
-            return letraColumna;
-        }else {
-            return null;
+                break;
         }
     }
 }
